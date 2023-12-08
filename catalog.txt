@@ -1,0 +1,2 @@
+Milk, 10.0, MilkLike
+Bread, 5.0, BreadLike

@@ -1,0 +1,2 @@
+Milk, 2
+Bread, 3
