@@ -23,20 +23,21 @@ data BonusCard = BonusCard
   {
   birthDate :: (Integer,Int,Int),
   discount :: Double
-  } deriving(Read, Show)
+  } deriving(Read, Show, Eq)
 
 -- Разделяет строку по указанному символу
 splitBy delimiter = Data.List.foldr f [[]] 
     where f c l@(x:xs) | c == delimiter = []:l 
                      | otherwise = (c:x):xs
 
--- Проверяет, что строка соддержит числовое значение
+-- Проверяет, что строка содержит числовое значение
 isNumeric :: String -> Bool
 isNumeric str = case reads str :: [(Double, String)] of
     [(_, "")] -> True
+    [(_, "\n")] -> True
     _-> False
 
--- Преобразует разделённую строку во внутренний тип 
+-- Преобразует разделённую строку во внутренний тип Item
 toItem :: [String] -> Maybe Item
 toItem [n, p, cat]
     | isNumeric p = Just Item {name = n, price = read p, category = cat}
@@ -47,25 +48,31 @@ toItem _ = Nothing
 toItemList :: [String] -> [Maybe Item]
 toItemList catalog = Data.List.map (\x -> toItem $ splitBy ',' x) catalog
 
--- Преобразует разделённую строку во внутренний тип
+-- Преобразует разделённую строку во внутренний тип Position
 toPosition :: [String] -> Maybe Position
 toPosition [i, c] 
     | isNumeric c = Just Position {item = i, count = read c}
     | otherwise = Nothing
 toPosition _ = Nothing
 
--- Преобразует список строк в список продутов
+-- Преобразует список строк в список продутов в корзине
 toPositionList :: [String] -> [Maybe Position]
 toPositionList cart = Data.List.map (\x -> toPosition $ splitBy ',' x) cart
 
--- Преобразует разделённую строку во внутренний тип
+-- Преобразует разделённую строку во внутренний тип даты
 parseDate :: [String] -> (Integer,Int,Int)
-parseDate [y, m, d] = (read y, read m, read d)
+parseDate [y, m, d]
+    | isNumeric y && isNumeric m && isNumeric d = (read y, read m, read d)
+    | otherwise = (0, 0, 0)
 parseDate _ =  (0, 0, 0)
 
--- Преобразует разделённую строку во внутренний тип
-toBonusCard :: [String] -> BonusCard
-toBonusCard [d, b] = BonusCard { birthDate = parseDate $ splitBy '-' d, discount = read b}
+-- Преобразует разделённую строку во внутренний тип BonusCard
+toBonusCard :: [String] -> Maybe BonusCard
+--toBonusCard [d, b] = BonusCard { birthDate = parseDate $ splitBy '-' d, discount = read b}
+toBonusCard [d, b] 
+    | isNumeric b = Just BonusCard { birthDate = parseDate $ splitBy '-' d, discount = read b}
+    | otherwise = Nothing
+toBonusCard _ = Nothing
 
 
 -- Получает список всех продуктов с количеством и ценами за них
@@ -93,7 +100,7 @@ calculatePositionPrice count price = fromIntegral count * price
 getTotalPrice :: [Maybe Item] -> [Maybe Position] -> String
 getTotalPrice catalog cart = "Всего " ++ show (calculateTotalPrice catalog cart) ++ " галактических кредитов" ++ "\n"
 
--- Вычисляет сумму без скидки
+-- Вычисляет общую сумму без скидки
 calculateTotalPrice :: [Maybe Item] -> [Maybe Position] -> Double
 calculateTotalPrice _ (Nothing:_) = 0
 calculateTotalPrice catalog (Just x:xs) = calculatePositionPrice (count x) (getPrice catalog (item x)) + calculateTotalPrice catalog xs
@@ -116,7 +123,7 @@ discountMoreThanFive catalog cart
 -- Начисляет скидку за наличие 10 товаров одной категории
 discountCategoryCntTen :: [Maybe Item] -> [Maybe Position] -> Double
 discountCategoryCntTen catalog cart
-    | maximum(elems (cntCategory catalog cart)) >= 10 = 15
+    | maximum(elems (cntCategory catalog cart)) >= 10 = 10
     | otherwise = 0 
     
 -- Получает категорию искомого товара
@@ -136,7 +143,7 @@ cntCategory _ _ = empty
 -- Начисляет скидку за удачный день рождения
 discountBirthday :: BonusCard -> Double
 discountBirthday bonuscard 
-    | isBirthday (birthDate bonuscard) = 50
+    | isBirthday (birthDate bonuscard) = 20
     | otherwise = 0
     
 -- Проверяет, совпадает ли день рождения с удачной датой
@@ -147,9 +154,10 @@ isBirthday (y, m, d)
     
 -- Проверяет правильный парсинг каталога и корзины
 listIsNotFine :: [Maybe a] -> Bool
-listIsNotFine (Just x:xs) = listIsNotFine xs
+listIsNotFine (Just _:xs) = listIsNotFine xs
 listIsNotFine [Nothing] = False
 listIsNotFine (Nothing:_) = True
+listIsNotFine _ = False
 
 -- Проверяет, содержит ли каталог негативные цены
 catalogContainsNegative :: [Maybe Item] -> Bool
@@ -166,11 +174,13 @@ cartContainsNegative (Just x:xs)
 cartContainsNegative _ = False
 
 -- Формирует чек в виде строки
-printCheck :: [Maybe Item] -> [Maybe Position] -> BonusCard -> String
-printCheck catalog cart bonuscard
+printCheck :: [Maybe Item] -> [Maybe Position] -> Maybe BonusCard -> String
+printCheck catalog cart (Just bonuscard)
     | (listIsNotFine catalog) || (listIsNotFine cart) = "Ошибка! Неверный формат данных во входных файлах!"
     | (catalogContainsNegative catalog) = "Ошибка! В каталоге есть отрицательные значения!"
     | (cartContainsNegative cart) = "Ошибка! В списке покупок есть отрицательные значения!"
     | (discount bonuscard) < 0 = "Ошибка! Отрицательное значение процентов скидки на бонусной карте!"
+    | (discount bonuscard) > 50 = "Ошибочка! На бонусной карте не можт быть более 50% скидки!"
     | otherwise = (getProductsList catalog cart) ++ (getTotalPrice catalog cart) ++ (calculateDiscount catalog cart bonuscard)
+printCheck _ _ Nothing = "Ошибка! Неверный формат данных во входных файлах!"
     
